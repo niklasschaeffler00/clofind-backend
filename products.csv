@@ -1,0 +1,11 @@
+title,price_cents,currency,deeplink,image_url,merchant
+Nike Air Force 1 '07,9999,EUR,https://www.example-shop.de/air-force-1,https://images.example.com/af1.jpg,Nike Store
+Levi's 501 Original Jeans,7999,EUR,https://www.example-shop.de/levis-501,https://images.example.com/levis501.jpg,Levi's
+Adidas Samba Classic,8999,EUR,https://www.example-shop.de/samba,https://images.example.com/samba.jpg,Adidas
+Carhartt WIP Chase Hoodie,6999,EUR,https://www.example-shop.de/chase-hoodie,https://images.example.com/chasehoodie.jpg,Carhartt WIP
+Dr. Martens 1460 Boots,14999,EUR,https://www.example-shop.de/1460,https://images.example.com/1460.jpg,Dr. Martens
+The North Face Nuptse Jacket,24999,EUR,https://www.example-shop.de/nuptse,https://images.example.com/nuptse.jpg,The North Face
+Uniqlo U Crew Neck T-Shirt,1499,EUR,https://www.example-shop.de/uniqlo-u-tee,https://images.example.com/uniqloutee.jpg,Uniqlo
+Zara Wide Leg Trousers,3999,EUR,https://www.example-shop.de/zara-wide-leg,https://images.example.com/zarapants.jpg,Zara
+COS Wool Overshirt,12999,EUR,https://www.example-shop.de/cos-overshirt,https://images.example.com/cosovershirt.jpg,COS
+New Balance 550,11999,EUR,https://www.example-shop.de/nb550,https://images.example.com/nb550.jpg,New Balance
