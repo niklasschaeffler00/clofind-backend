@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from dotenv import load_dotenv
+import subprocess, sys
 import os, io
 
 load_dotenv()  # .env einmal laden
@@ -20,6 +21,17 @@ engine = create_engine(
 
 # --- App ---
 app = FastAPI()
+
+@app.on_event("startup")
+def _ensure_faiss_index():
+    # Falls Railway mit "uvicorn main:app" startet und die Artefakte fehlen:
+    if not (os.path.exists("faiss.index") and os.path.exists("ids.npy")):
+        print("FAISS-Index nicht gefunden – baue neu …")
+        try:
+            subprocess.run([sys.executable, "build_index.py"], check=True)
+            print("Index-Build ok.")
+        except Exception as e:
+            print("Index-Build fehlgeschlagen:", e)
 
 # CORS fürs MVP offen (später einschränken)
 app.add_middleware(
@@ -86,3 +98,6 @@ async def upload(file: UploadFile = File(...)):
         "key_or_path": meta["key_or_path"],
     }
 from app.storage import S3_ENABLED, S3_BUCKET, S3_ENDPOINT
+# --- Suche (aus app_search.py) anhängen ---
+from app_search import app as search_api
+app.include_router(search_api.router)
