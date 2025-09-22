@@ -2,3 +2,10 @@
 __pycache__/
 *.pyc
 .env
+.env.*
+faiss.index
+ids.npy
+*.npy
+*.pt
+uploads/       # ⬅ neu: keine Upload-Dateien committen
+.DS_Store

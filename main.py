@@ -1,10 +1,13 @@
 from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from dotenv import load_dotenv
-import os
+import os, io
 
-load_dotenv()  # liest die .env-Datei im Projektordner
+load_dotenv()  # .env einmal laden
+
+# --- DB ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL fehlt. Lege eine .env mit DATABASE_URL=... an.")
@@ -15,18 +18,24 @@ engine = create_engine(
     connect_args={"connect_timeout": 5}
 )
 
-
+# --- App ---
 app = FastAPI()
 
+# CORS fürs MVP offen (später einschränken)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Health ---
 @app.get("/health")
 def health():
     return {"ok": True}
 
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    content = await file.read()  # MVP: nur im Speicher
-    # TODO: später in S3 speichern
-    return {"upload_id": "temp-123"}
+# --- DB Ping ---
 @app.get("/db_ping")
 def db_ping():
     try:
@@ -35,6 +44,8 @@ def db_ping():
         return {"db": "ok"}
     except SQLAlchemyError as e:
         return {"db": "error", "detail": str(e)}
+
+# --- Products (dein bestehender Endpoint) ---
 @app.get("/products")
 def get_products(limit: int = 20, q: str | None = None, merchant: str | None = None):
     where = ["p.active = true"]
@@ -61,4 +72,17 @@ def get_products(limit: int = 20, q: str | None = None, merchant: str | None = N
         rows = conn.execute(text(sql), params).mappings().all()
     return {"items": [dict(r) for r in rows]}
 
+# --- Upload (einziger /upload Endpoint) ---
+from app.storage import save_file  # Pfad ok, weil wir storage.py unter outfit-backend/app/ haben
 
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    meta = save_file(io.BytesIO(await file.read()), file.filename)
+    return {
+        "filename": file.filename,
+        "mime_type": file.content_type,
+        "storage": meta["storage"],
+        "location": meta["location"],
+        "key_or_path": meta["key_or_path"],
+    }
+from app.storage import S3_ENABLED, S3_BUCKET, S3_ENDPOINT
