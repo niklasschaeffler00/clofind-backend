@@ -145,3 +145,4 @@ def _attach_search():
 if os.path.exists("faiss.index") and os.path.exists("ids.npy"):
     _attach_search()
 
+
