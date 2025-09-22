@@ -30,6 +30,7 @@ app = FastAPI()
 def _ensure_faiss_index():
     if os.getenv("SKIP_BUILD_INDEX_ON_START") == "1":
         logging.info("SKIP_BUILD_INDEX_ON_START=1 -> überspringe Index-Build beim Start.")
+        _attach_search()
         return
     if not (os.path.exists("faiss.index") and os.path.exists("ids.npy")):
         logging.info("FAISS-Index nicht gefunden – baue neu …")
@@ -39,6 +40,9 @@ def _ensure_faiss_index():
         except Exception as e:
             # Wichtig: Service nicht crashen lassen (Health/Docs bleiben erreichbar)
             logging.warning(f"Index-Build fehlgeschlagen: {e}")
+    # danach immer versuchen, die Suche einzubinden
+    _attach_search()
+
 
 # CORS fürs MVP offen (später einschränken)
 app.add_middleware(
@@ -118,16 +122,26 @@ async def upload(file: UploadFile = File(...)):
     }
 
 # -----------------------------------------------------------------------------
-# SUCHE einhängen (aus app_search.py) – optional & fehlertolerant
+# SUCHE einhängen (aus app_search.py) – optional & in /docs sichtbar
 # -----------------------------------------------------------------------------
-def _mount_search():
+_SEARCH_ATTACHED = False
+
+def _attach_search():
+    """Versucht die Routen aus app_search in die Haupt-App zu übernehmen.
+    Scheitert nie hart, sondern loggt nur eine Warnung.
+    """
+    global _SEARCH_ATTACHED
+    if _SEARCH_ATTACHED:
+        return
     try:
-        # app_search enthält eine FastAPI-App namens "app"
-        from app_search import app as search_app  # Import heavy deps (faiss/clip) hier kapseln
-        # Root mounten, damit /search/... Pfade erhalten bleiben
-        app.mount("", search_app)
-        logging.info("Mounted app_search at root")
+        from app_search import app as search_app  # hat .router
+        app.include_router(search_app.router)     # <-- wichtig: include_router statt mount
+        logging.info("Included app_search.router in main app")
+        _SEARCH_ATTACHED = True
     except Exception as e:
         logging.warning(f"Suchen-API (app_search) nicht aktiv: {e}")
 
-_mount_search()
+# Falls der Index schon existiert (z. B. bei Redeploy), sofort versuchen einzubinden:
+if os.path.exists("faiss.index") and os.path.exists("ids.npy"):
+    _attach_search()
+
