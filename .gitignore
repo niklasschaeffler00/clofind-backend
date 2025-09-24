@@ -9,3 +9,4 @@ ids.npy
 *.pt
 uploads/       # ⬅ neu: keine Upload-Dateien committen
 .DS_Store
+uploads/
