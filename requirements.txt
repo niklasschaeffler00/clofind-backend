@@ -1,10 +1,21 @@
 fastapi
 uvicorn[standard]
-pydantic
-python-dotenv
 python-multipart
-sqlalchemy
+pillow
+numpy>=1.24
+sqlalchemy>=2.0
 psycopg2-binary
-numpy
-faiss-cpu
-boto3
+python-dotenv
+regex
+ftfy
+tqdm
+
+# Vektorsuche & ML (CPU)
+faiss-cpu==1.8.0
+torch==2.2.2
+# torchvision optional – nur falls du es brauchst
+# torchvision==0.17.2
+
+# CLIP (als PyPI-Paket, kein Git notwendig)
+clip-anytorch
+
