@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from dotenv import load_dotenv
@@ -25,25 +26,6 @@ engine = create_engine(
 # -----------------------------------------------------------------------------
 app = FastAPI()
 
-# Beim Start FAISS-Index bauen, falls nicht vorhanden
-@app.on_event("startup")
-def _ensure_faiss_index():
-    if os.getenv("SKIP_BUILD_INDEX_ON_START") == "1":
-        logging.info("SKIP_BUILD_INDEX_ON_START=1 -> überspringe Index-Build beim Start.")
-        _attach_search()
-        return
-    if not (os.path.exists("faiss.index") and os.path.exists("ids.npy")):
-        logging.info("FAISS-Index nicht gefunden – baue neu …")
-        try:
-            subprocess.run([sys.executable, "build_index.py"], check=True)
-            logging.info("Index-Build ok.")
-        except Exception as e:
-            # Wichtig: Service nicht crashen lassen (Health/Docs bleiben erreichbar)
-            logging.warning(f"Index-Build fehlgeschlagen: {e}")
-    # danach immer versuchen, die Suche einzubinden
-    _attach_search()
-
-
 # CORS fürs MVP offen (später einschränken)
 app.add_middleware(
     CORSMiddleware,
@@ -52,6 +34,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -----------------------------------------------------------------------------
+# STARTUP: FAISS-Index bauen (optional) und Suche einhängen
+# -----------------------------------------------------------------------------
+@app.on_event("startup")
+def _ensure_faiss_index():
+    if os.getenv("SKIP_BUILD_INDEX_ON_START") == "1":
+        logging.info("SKIP_BUILD_INDEX_ON_START=1 -> überspringe Index-Build beim Start.")
+        _attach_search()
+        return
+
+    if not (os.path.exists("faiss.index") and os.path.exists("ids.npy")):
+        logging.info("FAISS-Index nicht gefunden – baue neu …")
+        try:
+            subprocess.run([sys.executable, "build_index.py"], check=True)
+            logging.info("Index-Build ok.")
+        except Exception as e:
+            # Wichtig: Service nicht crashen lassen (Health/Docs bleiben erreichbar)
+            logging.warning(f"Index-Build fehlgeschlagen: {e}")
+
+    # danach immer versuchen, die Suche einzubinden
+    _attach_search()
 
 # -----------------------------------------------------------------------------
 # HEALTH / DB
@@ -128,21 +132,33 @@ _SEARCH_ATTACHED = False
 
 def _attach_search():
     """Versucht die Routen aus app_search in die Haupt-App zu übernehmen.
-    Scheitert nie hart, sondern loggt nur eine Warnung.
+    Scheitert nie hart, sondern registriert bei Fehlern Stub-Routen (503 statt 404).
     """
     global _SEARCH_ATTACHED
     if _SEARCH_ATTACHED:
         return
     try:
-        from app_search import app as search_app  # hat .router
-        app.include_router(search_app.router)     # <-- wichtig: include_router statt mount
-        logging.info("Included app_search.router in main app")
+        from app_search import router as search_router
+        app.include_router(search_router)
+        logging.info("Search API enabled")
         _SEARCH_ATTACHED = True
     except Exception as e:
         logging.warning(f"Suchen-API (app_search) nicht aktiv: {e}")
 
-# Falls der Index schon existiert (z. B. bei Redeploy), sofort versuchen einzubinden:
-if os.path.exists("faiss.index") and os.path.exists("ids.npy"):
-    _attach_search()
+        # Fallback-Stub, damit das Frontend niemals 404 bekommt
+        stub = APIRouter(prefix="/search", tags=["search"])
 
+        @stub.post("/by-upload")
+        async def search_stub(file: UploadFile = File(...), topk: int = Form(5)):
+            raise HTTPException(status_code=503, detail=f"Search disabled on this deploy: {e}")
 
+        @stub.post("/image")
+        async def search_stub_alias(file: UploadFile = File(...), topk: int = Form(5)):
+            return await search_stub(file, topk)
+
+        app.include_router(stub)
+        _SEARCH_ATTACHED = True
+        logging.info("Registered search stub endpoints (503)")
+
+# >>> NEU: sofort (best effort) anhängen – echte Suche ODER Stub, aber nie 404
+_attach_search()
