@@ -2,23 +2,19 @@ fastapi
 uvicorn[standard]
 python-multipart
 pillow
-numpy>=1.24
+numpy==1.26.4
 sqlalchemy>=2.0
 psycopg2-binary
 python-dotenv
 regex
 ftfy
 tqdm
-
-# Vektorsuche & ML (CPU)
-faiss-cpu==1.8.0
-torch==2.2.2
-# torchvision optional – nur falls du es brauchst
-# torchvision==0.17.2
-
-# CLIP (als PyPI-Paket, kein Git notwendig)
-clip-anytorch
 packaging
-# optional, nur wenn dein /upload S3/Backblaze nutzen soll:
 boto3
 
+faiss-cpu==1.8.0
+torch==2.2.2
+# torchvision optional:
+# torchvision==0.17.2
+
+clip-anytorch
