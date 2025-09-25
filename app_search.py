@@ -3,15 +3,10 @@ import os
 import io
 import urllib.request
 import urllib.error
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import numpy as np
-import faiss
-import torch
-import clip
-from PIL import Image, UnidentifiedImageError
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -27,30 +22,29 @@ os.environ.setdefault("XDG_CACHE_HOME", "/tmp/.cache")
 os.environ.setdefault("TORCH_HOME", "/tmp/.cache")
 
 # ---------------------------------------------------------------------
-# FastAPI-App
+# Router statt eigener FastAPI-App
 # ---------------------------------------------------------------------
-app = FastAPI(title="CloFind Visual Search API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],          # TODO: im Prod einschränken
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+router = APIRouter(prefix="/search", tags=["search"])
 
 # ---------------------------------------------------------------------
-# Globale Ressourcen
+# Globale Ressourcen (lazy)
 # ---------------------------------------------------------------------
 MODEL_NAME = "ViT-B/32"
 INDEX_PATH = "faiss.index"
-IDS_PATH   = "ids.npy"
+IDS_PATH = "ids.npy"
 
 _device: str = "cpu"
+
+# Heavy-Imports & Modelle erst beim ersten Zugriff laden
 _model = None
 _preprocess = None
+_faiss = None
+_torch = None
+_clip = None
+_Image = None
 _index = None
-_ids: np.ndarray | None = None
+_ids: Optional[np.ndarray] = None
+
 
 def db_connect():
     dsn = os.getenv("DATABASE_URL")
@@ -58,32 +52,56 @@ def db_connect():
         raise RuntimeError("DATABASE_URL fehlt")
     return psycopg2.connect(dsn)
 
+
 def ensure_loaded():
     """Lädt CLIP + FAISS + IDs lazy einmalig."""
-    global _model, _preprocess, _index, _ids
+    global _model, _preprocess, _index, _ids, _faiss, _torch, _clip, _Image
+
+    if _faiss is None or _torch is None or _clip is None or _Image is None:
+        try:
+            import faiss as _faiss_mod
+            import torch as _torch_mod
+            import clip as _clip_mod  # stellt 'clip' bereit (via clip-anytorch)
+            from PIL import Image as _PIL_Image
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Search stack not available: {e}")
+
+        _globals = globals()
+        _globals["_faiss"] = _faiss_mod
+        _globals["_torch"] = _torch_mod
+        _globals["_clip"] = _clip_mod
+        _globals["_Image"] = _PIL_Image
+
     if _model is None or _preprocess is None:
-        # cache dir aus XDG_CACHE_HOME übernehmen
         cache_root = os.getenv("XDG_CACHE_HOME", "/tmp/.cache")
-        _model, _preprocess = clip.load(MODEL_NAME, device=_device, download_root=cache_root)
-        _model.eval()
+        _model_loaded, _preproc = _clip.load(MODEL_NAME, device=_device, download_root=cache_root)
+        _model_loaded.eval()
+        _globals = globals()
+        _globals["_model"] = _model_loaded
+        _globals["_preprocess"] = _preproc
+
     if _index is None or _ids is None:
         if not (os.path.exists(INDEX_PATH) and os.path.exists(IDS_PATH)):
             raise HTTPException(status_code=503, detail="Indexdateien fehlen (faiss.index / ids.npy).")
-        _index = faiss.read_index(INDEX_PATH)
-        _ids   = np.load(IDS_PATH)
+        _globals = globals()
+        _globals["_index"] = _faiss.read_index(INDEX_PATH)
+        _globals["_ids"] = np.load(IDS_PATH)
+
 
 def _image_to_tensor(data: bytes):
     try:
-        img = Image.open(io.BytesIO(data)).convert("RGB")
-    except UnidentifiedImageError:
+        img = _Image.open(io.BytesIO(data)).convert("RGB")
+    except Exception:
         raise HTTPException(status_code=400, detail="Die Datei/URL liefert kein gültiges Bild.")
     return _preprocess(img).unsqueeze(0)
 
+
 def _encode_image(tensor):
-    with torch.no_grad():
+    with _torch.no_grad():
         vec = _model.encode_image(tensor.to(_device)).cpu().numpy().astype("float32")
-    faiss.normalize_L2(vec)
+    _faiss.normalize_L2(vec)
     return vec
+
 
 def _label_for(score: float) -> str:
     if score >= 0.85:
@@ -91,6 +109,7 @@ def _label_for(score: float) -> str:
     if score >= 0.60:
         return "Sehr ähnlich"
     return "Alternative"
+
 
 def _fetch_image_bytes(url: str, timeout: int = 15) -> bytes:
     """Download mit User-Agent; mappt Netzwerkfehler auf 400 statt 500."""
@@ -112,15 +131,11 @@ def _fetch_image_bytes(url: str, timeout: int = 15) -> bytes:
     except urllib.error.URLError as e:
         raise HTTPException(status_code=400, detail=f"Image URL error: {e.reason}")
 
+
 # ---------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-# -------- Upload-Suche (aktiv) --------
-@app.post("/search/by-upload")
+@router.post("/by-upload")
 async def search_by_upload(
     file: UploadFile = File(...),
     topk: int = Form(5),
@@ -173,17 +188,17 @@ async def search_by_upload(
 
     return {"count": len(result), "results": result}
 
-# Optionaler Alias (falls dein Frontend /search/image nutzt)
-@app.post("/search/image")
+
+@router.post("/image")
 async def search_image_alias(
     file: UploadFile = File(...),
     topk: int = Form(5),
 ):
     return await search_by_upload(file=file, topk=topk)
 
-# -------- URL-Suche (nur wenn aktiviert) --------
+
 if ENABLE_URL_SEARCH:
-    @app.post("/search/by-url")
+    @router.post("/by-url")
     async def search_by_url(
         image_url: str = Form(...),
         topk: int = Form(5),
