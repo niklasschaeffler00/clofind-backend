@@ -7,3 +7,4 @@ sqlalchemy
 psycopg2-binary
 numpy
 faiss-cpu
+boto3
