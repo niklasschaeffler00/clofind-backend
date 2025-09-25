@@ -27,13 +27,18 @@ engine = create_engine(
 app = FastAPI()
 
 # CORS fürs MVP offen (später einschränken)
+# CORS nur für dein Frontend + Localhost
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://clofind.vercel.app",  # dein Vercel-Frontend
+        "http://localhost:3000",       # fürs lokale Entwickeln
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # -----------------------------------------------------------------------------
 # STARTUP: FAISS-Index bauen (optional) und Suche einhängen
@@ -72,6 +77,14 @@ def db_ping():
         return {"db": "ok"}
     except SQLAlchemyError as e:
         return {"db": "error", "detail": str(e)}
+    
+@app.get("/version")
+def version():
+    import os
+    return {
+        "commit": os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"),
+        "env": os.getenv("RAILWAY_ENVIRONMENT", "dev"),
+    }
 
 # -----------------------------------------------------------------------------
 # PRODUCTS
