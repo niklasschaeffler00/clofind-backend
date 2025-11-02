@@ -53,7 +53,7 @@ def _ensure_faiss_index():
     if not (os.path.exists("faiss.index") and os.path.exists("ids.npy")):
         logging.info("FAISS-Index nicht gefunden – baue neu …")
         try:
-            subprocess.run([sys.executable, "build_index.py"], check=True)
+            subprocess.run([sys.executable, "scripts/maintenance/build_index.py"], check=True)
             logging.info("Index-Build ok.")
         except Exception as e:
             # Wichtig: Service nicht crashen lassen (Health/Docs bleiben erreichbar)

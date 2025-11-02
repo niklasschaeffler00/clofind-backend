@@ -1,12 +1,28 @@
+# venv & secrets
 .venv/
-__pycache__/
-*.pyc
 .env
 .env.*
+
+# Python-Cache
+__pycache__/
+*.pyc
+
+# Artefakte & große Dateien
+artifacts/
 faiss.index
 ids.npy
 *.npy
 *.pt
-uploads/       # ⬅ neu: keine Upload-Dateien committen
-.DS_Store
+
+# Uploads (lokal)
 uploads/
+
+# Temporär
+.tmp/
+tmp/
+.DS_Store
+
+# Wartungsskripte (nicht ins Repo)
+scripts/maintenance/
+data/
+out/
