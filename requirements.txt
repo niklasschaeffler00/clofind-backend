@@ -18,3 +18,7 @@ torch==2.2.2
 # torchvision==0.17.2
 
 clip-anytorch
+
+pgvector==0.4.1
+
+psycopg2-binary>=2.9.9
